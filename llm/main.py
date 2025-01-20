@@ -131,7 +131,7 @@ def upload():
         chunks = text_splitter.split_documents(docs)
         print(f"Number of chunks: {len(chunks)}")
 
-        Chroma.from_documents(documents=chunks, embedding=embedding, persist_directory=folder_path)
+        Chroma.from_documents(documents=chunks, embedding=embedding[1], persist_directory=folder_path)
 
         return jsonify({
             "message": "File uploaded successfully",
@@ -147,3 +147,10 @@ def start():
 
 if __name__ == "__main__":
     start()
+
+# from app import create_app
+
+# app = create_app()
+
+# if __name__ == "__main__":
+#     app.run(host="127.0.0.1", port=11436, debug=True)
