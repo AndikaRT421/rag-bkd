@@ -42,6 +42,14 @@
             class="flex-grow p-2 border border-gray-300 rounded-l-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             autocomplete="off"
         />
+        <select
+            id="model"
+            name="model"
+            class="p-2 border border-gray-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+            <option value="llama">Llama</option>
+            <option value="openai">OpenAI</option>
+        </select>
         <button
             type="submit"
             class="px-4 py-2 bg-blue-600 text-white rounded-r-lg hover:bg-blue-700 focus:outline-none"
@@ -57,6 +65,7 @@
         const chatForm = document.getElementById('chat-form');
         const chatInput = document.getElementById('chat-input');
         const loadingIndicator = document.getElementById('loading-indicator');
+        const modelSelect = document.getElementById('model');
 
         const userName = "User";
         const botName = "Emilia";
@@ -171,7 +180,7 @@
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': '{{ csrf_token() }}',
                     },
-                    body: JSON.stringify({ question: userMessage }),
+                    body: JSON.stringify({ question: userMessage, model: modelSelect.value }),
                 });
 
                 const result = await response.json();

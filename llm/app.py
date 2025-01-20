@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from langchain_core.prompts import ChatPromptTemplate
-# from langchain_ollama.llms import OllamaLLM
+from langchain_ollama.llms import OllamaLLM
 from langchain_openai import ChatOpenAI
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
@@ -27,21 +27,25 @@ folder_path = "db"
 
 cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-12-v2")
 
-# llm = OllamaLLM(model="llama3")
-llm = ChatOpenAI(model="gpt-4o-mini")
+llm = [
+    OllamaLLM(model="llama3"),
+    ChatOpenAI(model="gpt-4o-mini")
+]
 
-# fast_embedding = FastEmbedEmbeddings()
-fast_embedding = OpenAIEmbeddings(model="text-embedding-3-large")
+embedding = [
+    FastEmbedEmbeddings(),
+    OpenAIEmbeddings(model="text-embedding-3-large")
+]
 
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1024, chunk_overlap=300, length_function=len, is_separator_regex=False
 )
 
-summary_prompt = PromptTemplate.from_template("""
-    Ringkas pertanyaan berikut:
-    Pertanyaan: {query}
-""")
-summarization_chain = LLMChain(llm=llm, prompt=summary_prompt)
+# summary_prompt = PromptTemplate.from_template("""
+#     Ringkas pertanyaan berikut:
+#     Pertanyaan: {query}
+# """)
+# summarization_chain = LLMChain(llm=llm, prompt=summary_prompt)
 
 raw_prompt = ChatPromptTemplate.from_template("""
     Anda adalah asisten AI bernama Emilia (jangan memperkenalkan diri setiap saat, hanya ketika pengguna ingin menanyakan nama Anda).
@@ -62,11 +66,19 @@ def askPDF():
     try:
         data = request.json
         query = data.get("query")
+        model_type = data.get("model")
 
-        print("Original Query:", query)
+        print(model_type)
+
+        if model_type == "llama":
+            i = 0
+        elif model_type == "openai":
+            i = 1
+        else:
+            return jsonify({'error': 'Invalid model type!'}), 400
 
         print("Loading vector database...")
-        vector_db = Chroma(persist_directory=folder_path, embedding_function=fast_embedding)
+        vector_db = Chroma(persist_directory=folder_path, embedding_function=embedding[i])
 
         print("Creating Chain...")
         retriever = vector_db.as_retriever(
@@ -86,7 +98,7 @@ def askPDF():
         top_k_docs = [doc for doc, score in ranked_docs[:5]]
         context = "\n\n".join(doc.page_content for doc in top_k_docs)
         formatted_prompt = raw_prompt.format(input=query, context=context)
-        result = llm.invoke(formatted_prompt)
+        result = llm[i].invoke(formatted_prompt)
         print("Result:", result)
 
         answer = jsonify({
@@ -119,7 +131,7 @@ def upload():
         chunks = text_splitter.split_documents(docs)
         print(f"Number of chunks: {len(chunks)}")
 
-        Chroma.from_documents(documents=chunks, embedding=fast_embedding, persist_directory=folder_path)
+        Chroma.from_documents(documents=chunks, embedding=embedding, persist_directory=folder_path)
 
         return jsonify({
             "message": "File uploaded successfully",

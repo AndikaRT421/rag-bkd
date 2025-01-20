@@ -9,12 +9,12 @@ class chatbotController extends Controller
 {
     public function uploads(Request $request)
     {
-        
+
         $request->validate([
             'file' => 'required|mimes:pdf|max:2048',
             'confirmation' => 'required|in:Saya mengerti akan risiko tersebut',
         ]);
-    
+
         $client = new Client();
         $response = $client->post('http://127.0.0.1:11436/upload', [
             'multipart' => [
@@ -25,27 +25,29 @@ class chatbotController extends Controller
                 ],
             ],
         ]);
-    
+
         $result = json_decode($response->getBody()->getContents(), true);
         $msg = $result['message'] ?? 'Upload berhasil.';
         $file_name = $result['filename'] ?? null;
-        
+
         return redirect()->route('upload')->with([
             'message' => $msg,
             'file_name' => $file_name,
         ]);
-    }    
+    }
 
     public function ask(Request $request)
     {
         $request->validate([
             'question' => 'required|string',
+            'model' => 'required|string',
         ]);
 
         $client = new Client();
         $response = $client->post('http://127.0.0.1:11436/ask_pdf', [
             'json' => [
                 'query' => $request->question,
+                'model' => $request->model,
             ],
         ]);
 
