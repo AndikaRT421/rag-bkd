@@ -7,7 +7,7 @@
             </a>
         </div>
         <!-- Title -->
-        <div class="absolute left-1/2 transform -translate-x-1/2 top-16 text-lg sm:text-xl md:text-2xl font-semibold text-gray-700">
+        <div class="absolute left-1/2 transform -translate-x-1/2 top-16 text-sm sm:text-base md:text-lg font-semibold text-gray-700">
             Prototipe Chatbot Emilia
         </div>
     </div>
