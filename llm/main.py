@@ -131,7 +131,7 @@ def upload():
         chunks = text_splitter.split_documents(docs)
         print(f"Number of chunks: {len(chunks)}")
 
-        Chroma.from_documents(documents=chunks, embedding=embedding[1], persist_directory=folder_path)
+        Chroma.from_documents(documents=chunks, embedding=embedding[0], persist_directory=folder_path)
 
         return jsonify({
             "message": "File uploaded successfully",
