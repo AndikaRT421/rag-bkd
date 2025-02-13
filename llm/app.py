@@ -11,6 +11,12 @@ from sentence_transformers import CrossEncoder
 import os
 from dotenv import load_dotenv
 
+from langchain_openai import OpenAIEmbeddings
+from langchain_openai import ChatOpenAI
+from langchain_qdrant import QdrantVectorStore
+from qdrant_client import QdrantClient
+from qdrant_client.http.models import Distance, VectorParams
+
 load_dotenv()
 
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
@@ -18,13 +24,19 @@ os.environ["LANGCHAIN_TRACING_V2"] = os.getenv("LANGCHAIN_TRACING_V2")
 os.environ["LANGCHAIN_ENDPOINT"] = os.getenv("LANGCHAIN_ENDPOINT")
 os.environ["LANGCHAIN_API_KEY"] = os.getenv("LANGCHAIN_API_KEY")
 os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+QDRANT_ENDPOINT = os.getenv("QDRANT_ENDPOINT")
 
 app = Flask(__name__)
 folder_path = "db"
 
 cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-12-v2")
-llm = OllamaLLM(model="llama3")
-fast_embedding = FastEmbedEmbeddings()
+# llm = OllamaLLM(model="llama3")
+# fast_embedding = FastEmbedEmbeddings()
+
+llm = ChatOpenAI(model="gpt-4o-mini")
+fast_embedding = OpenAIEmbeddings(model="text-embedding-3-large")
+
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1024, chunk_overlap=300, length_function=len, is_separator_regex=False
 )
@@ -36,7 +48,7 @@ summary_prompt = PromptTemplate.from_template("""
 summarization_chain = LLMChain(llm=llm, prompt=summary_prompt)
 
 raw_prompt = ChatPromptTemplate.from_template("""
-    Anda adalah asisten AI bernama Emilia (jangan memperkenalkan diri setiap saat, hanya ketika pengguna ingin menanyakan nama Anda). 
+    Anda adalah asisten AI bernama Emilia (jangan memperkenalkan diri setiap saat, hanya ketika pengguna ingin menanyakan nama Anda).
     Jawab berdasarkan dokumen yang diambil dan gunakan bahasa Indonesia
     Jika konteks tidak mencukupi, Anda dapat menjawab sesuai pengetahuan Anda
     Pertanyaan: {input}
@@ -44,22 +56,37 @@ raw_prompt = ChatPromptTemplate.from_template("""
     Jawaban:
 """)
 
+client = QdrantClient(QDRANT_ENDPOINT, api_key=QDRANT_API_KEY)
+
+# client.create_collection(
+#     collection_name="demo_collection",
+#     vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
+# )
+
+vector_store = QdrantVectorStore(
+    client=client,
+    collection_name="demo_collection",
+    embedding=fast_embedding,
+)
+
 @app.route("/ask_pdf", methods=["POST"])
 def askPDF():
     print("Request /ask_pdf received")
-    
+
     if not request.json:
         return jsonify({'error': 'Error request!'}), 400
-    
+
     try:
         data = request.json
         query = data.get("query")
-        
+
         print("Original Query:", query)
-        
+
         print("Loading vector database...")
-        vector_db = Chroma(persist_directory=folder_path, embedding_function=fast_embedding)
-        
+        # vector_db = Chroma(persist_directory=folder_path, embedding_function=fast_embedding)
+
+        vector_db = vector_store
+
         print("Creating Chain...")
         retriever = vector_db.as_retriever(
             search_type="mmr",
@@ -80,10 +107,10 @@ def askPDF():
         formatted_prompt = raw_prompt.format(input=query, context=context)
         result = llm.invoke(formatted_prompt)
         print("Result:", result)
-        
+
         answer = jsonify({
-            "message": "Query processed successfully", 
-            "answer": result,
+            "message": "Query processed successfully",
+            "answer": result.content,
             "context": context
         })
         return answer
@@ -93,30 +120,39 @@ def askPDF():
 @app.route("/upload", methods=["POST"])
 def upload():
     print("Request /upload received")
-    
+
     if "file" not in request.files:
         return jsonify({'error': 'No file part'}), 400
-    
+
     try:
         file = request.files["file"]
         file_name = file.filename
         save_path = f"uploads/{file_name}"
         file.save(save_path)
         print(f"File saved at {save_path}")
-        
+
         loader = PDFPlumberLoader(save_path)
         docs = loader.load_and_split()
         print(f"Number of documents: {len(docs)}")
-        
+
         chunks = text_splitter.split_documents(docs)
         print(f"Number of chunks: {len(chunks)}")
-        
-        Chroma.from_documents(documents=chunks, embedding=fast_embedding, persist_directory=folder_path)
-            
+
+        # Chroma.from_documents(documents=chunks, embedding=fast_embedding, persist_directory=folder_path)
+
+        QdrantVectorStore.from_documents(
+            chunks,
+            fast_embedding,
+            url=QDRANT_ENDPOINT,
+            api_key=QDRANT_API_KEY,
+            prefer_grpc=True,
+            collection_name="demo_collection",
+        )
+
         return jsonify({
-            "message": "File uploaded successfully", 
-            "filename": file_name, 
-            "documents": len(docs), 
+            "message": "File uploaded successfully",
+            "filename": file_name,
+            "documents": len(docs),
             "chunks": len(chunks)
         })
     except Exception as e:
