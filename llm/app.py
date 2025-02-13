@@ -15,7 +15,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import Distance, VectorParams
+from qdrant_client.http.models import Distance, VectorParams, Filter, FieldCondition, MatchValue, PointIdsList
 
 load_dotenv()
 
@@ -85,10 +85,8 @@ def askPDF():
         print("Loading vector database...")
         # vector_db = Chroma(persist_directory=folder_path, embedding_function=fast_embedding)
 
-        vector_db = vector_store
-
         print("Creating Chain...")
-        retriever = vector_db.as_retriever(
+        retriever = vector_store.as_retriever(
             search_type="mmr",
             search_kwargs={"k": 20, "lambda_mult": 0.2},
         )
@@ -154,6 +152,82 @@ def upload():
             "filename": file_name,
             "documents": len(docs),
             "chunks": len(chunks)
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route("/remove", methods=["POST"])
+def remove():
+    print("Request /remove received")
+
+    if not request.json:
+        return jsonify({'error': 'Error request!'}), 400
+
+    try:
+        data = request.json
+        document_id = data.get("document_id")
+
+        if not document_id:
+            return jsonify({'error': 'Document ID is required'}), 400
+
+        client.delete(
+            collection_name="demo_collection",
+            points_selector=PointIdsList(
+                points=[document_id]
+            )
+        )
+
+        return jsonify({
+            "message": "Document deleted successfully",
+            "document_id": document_id
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route("/delete", methods=["POST"])
+def delete():
+    print("Request /delete received")
+
+    if not request.json or "filename" not in request.json:
+        return jsonify({'error': 'Missing filename in request!'}), 400
+
+    try:
+        filename = request.json["filename"]
+        print(f"Deleting document and chunks for filename: {filename}")
+
+        filter_condition = Filter(
+            must=[
+                FieldCondition(
+                    key="metadata.file_path",
+                    match=MatchValue(value="uploads/"+filename)
+                )
+            ]
+        )
+
+        scroll_result = client.scroll(
+            collection_name="demo_collection",
+            scroll_filter=filter_condition,
+            with_payload=True,
+            with_vectors=False,
+            limit=1000
+        )
+
+        vector_ids_to_delete = [record.id for record in scroll_result[0]]
+        print(f"Found {len(vector_ids_to_delete)} chunks to delete for filename: {filename}")
+
+        if not vector_ids_to_delete:
+            return jsonify({'message': f"No chunks found for filename: {filename}"}), 404
+
+        client.delete(
+            collection_name="demo_collection",
+            points_selector=PointIdsList(
+                points=vector_ids_to_delete
+            )
+        )
+
+        return jsonify({
+            "message": f"Document and chunks deleted successfully for filename: {filename}",
+            "deleted_chunks": len(vector_ids_to_delete)
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
