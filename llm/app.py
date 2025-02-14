@@ -42,11 +42,11 @@ app.add_middleware(
 
 
 cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-12-v2")
-# llm = OllamaLLM(model="llama3")
-# fast_embedding = FastEmbedEmbeddings()
+llm = OllamaLLM(model="llama3.2")
+fast_embedding = FastEmbedEmbeddings()
 
-llm = ChatOpenAI(model="gpt-4o-mini")
-fast_embedding = OpenAIEmbeddings(model="text-embedding-3-large")
+# llm = ChatOpenAI(model="gpt-4o-mini")
+# fast_embedding = OpenAIEmbeddings(model="text-embedding-3-large")
 
 text_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1024, chunk_overlap=300, length_function=len, is_separator_regex=False
@@ -70,13 +70,18 @@ raw_prompt = ChatPromptTemplate.from_template("""
 client = QdrantClient(QDRANT_ENDPOINT, api_key=QDRANT_API_KEY)
 
 client.create_collection(
-    collection_name="demo_collection",
-    vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
+    collection_name="demi_collection",
+    vectors_config=VectorParams(size=384, distance=Distance.COSINE),
 )
+
+# client.create_collection(
+#     collection_name="demi_collection",
+#     vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
+# )
 
 vector_store = QdrantVectorStore(
     client=client,
-    collection_name="demo_collection",
+    collection_name="demi_collection",
     embedding=fast_embedding,
 )
 
@@ -153,7 +158,7 @@ async def upload(file: UploadFile = File(...)):
             url=QDRANT_ENDPOINT,
             api_key=QDRANT_API_KEY,
             prefer_grpc=True,
-            collection_name="demo_collection",
+            collection_name="demi_collection",
         )
 
         return JSONResponse(content={
@@ -186,7 +191,7 @@ async def delete(filename: dict):
         )
 
         scroll_result = client.scroll(
-            collection_name="demo_collection",
+            collection_name="demi_collection",
             scroll_filter=filter_condition,
             with_payload=True,
             with_vectors=False,
@@ -200,7 +205,7 @@ async def delete(filename: dict):
             return JSONResponse(content={'message': f"No chunks found for filename: {filename}"}, status_code=404)
 
         client.delete(
-            collection_name="demo_collection",
+            collection_name="demi_collection",
             points_selector=PointIdsList(
                 points=vector_ids_to_delete
             )
