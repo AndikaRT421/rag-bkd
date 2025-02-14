@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama.llms import OllamaLLM
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -27,7 +28,7 @@ os.environ["LANGCHAIN_PROJECT"] = os.getenv("LANGCHAIN_PROJECT")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 QDRANT_ENDPOINT = os.getenv("QDRANT_ENDPOINT")
 
-app = Flask(__name__)
+app = FastAPI()
 folder_path = "db"
 
 cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-12-v2")
@@ -69,18 +70,17 @@ vector_store = QdrantVectorStore(
     embedding=fast_embedding,
 )
 
-@app.route("/ask_pdf", methods=["POST"])
-def askPDF():
+@app.post("/ask_pdf")
+async def ask_pdf(query: dict):
     print("Request /ask_pdf received")
 
-    if not request.json:
-        return jsonify({'error': 'Error request!'}), 400
+    if not query:
+        raise HTTPException(status_code=400, detail="Error request!")
 
     try:
-        data = request.json
-        query = data.get("query")
+        query_text = query.get("query")
 
-        print("Original Query:", query)
+        print("Original Query:", query_text)
 
         print("Loading vector database...")
         # vector_db = Chroma(persist_directory=folder_path, embedding_function=fast_embedding)
@@ -90,10 +90,10 @@ def askPDF():
             search_type="mmr",
             search_kwargs={"k": 20, "lambda_mult": 0.2},
         )
-        retrieved_docs = retriever.get_relevant_documents(query)
+        retrieved_docs = retriever.get_relevant_documents(query_text)
         print(f"Retrieved {len(retrieved_docs)} documents.")
 
-        query_doc_pairs = [(query, doc.page_content) for doc in retrieved_docs]
+        query_doc_pairs = [(query_text, doc.page_content) for doc in retrieved_docs]
         scores = cross_encoder.predict(query_doc_pairs)
         ranked_docs = sorted(
             zip(retrieved_docs, scores),
@@ -102,31 +102,30 @@ def askPDF():
         )
         top_k_docs = [doc for doc, score in ranked_docs[:5]]
         context = "\n\n".join(doc.page_content for doc in top_k_docs)
-        formatted_prompt = raw_prompt.format(input=query, context=context)
+        formatted_prompt = raw_prompt.format(input=query_text, context=context)
         result = llm.invoke(formatted_prompt)
         print("Result:", result)
 
-        answer = jsonify({
+        return JSONResponse(content={
             "message": "Query processed successfully",
             "answer": result.content,
             "context": context
         })
-        return answer
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route("/upload", methods=["POST"])
-def upload():
+@app.post("/upload")
+async def upload(file: UploadFile = File(...)):
     print("Request /upload received")
 
-    if "file" not in request.files:
-        return jsonify({'error': 'No file part'}), 400
+    if not file:
+        raise HTTPException(status_code=400, detail="No file part")
 
     try:
-        file = request.files["file"]
         file_name = file.filename
         save_path = f"uploads/{file_name}"
-        file.save(save_path)
+        with open(save_path, "wb") as buffer:
+            buffer.write(file.file.read())
         print(f"File saved at {save_path}")
 
         loader = PDFPlumberLoader(save_path)
@@ -147,52 +146,24 @@ def upload():
             collection_name="demo_collection",
         )
 
-        return jsonify({
+        return JSONResponse(content={
             "message": "File uploaded successfully",
             "filename": file_name,
             "documents": len(docs),
             "chunks": len(chunks)
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.route("/remove", methods=["POST"])
-def remove():
-    print("Request /remove received")
-
-    if not request.json:
-        return jsonify({'error': 'Error request!'}), 400
-
-    try:
-        data = request.json
-        document_id = data.get("document_id")
-
-        if not document_id:
-            return jsonify({'error': 'Document ID is required'}), 400
-
-        client.delete(
-            collection_name="demo_collection",
-            points_selector=PointIdsList(
-                points=[document_id]
-            )
-        )
-
-        return jsonify({
-            "message": "Document deleted successfully",
-            "document_id": document_id
-        })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route("/delete", methods=["POST"])
-def delete():
+@app.post("/delete")
+async def delete(filename: dict):
     print("Request /delete received")
 
-    if not request.json or "filename" not in request.json:
-        return jsonify({'error': 'Missing filename in request!'}), 400
+    if not filename or "filename" not in filename:
+        raise HTTPException(status_code=400, detail="Missing filename in request!")
 
     try:
-        filename = request.json["filename"]
+        filename = filename["filename"]
         print(f"Deleting document and chunks for filename: {filename}")
 
         filter_condition = Filter(
@@ -216,7 +187,7 @@ def delete():
         print(f"Found {len(vector_ids_to_delete)} chunks to delete for filename: {filename}")
 
         if not vector_ids_to_delete:
-            return jsonify({'message': f"No chunks found for filename: {filename}"}), 404
+            return JSONResponse(content={'message': f"No chunks found for filename: {filename}"}, status_code=404)
 
         client.delete(
             collection_name="demo_collection",
@@ -225,15 +196,13 @@ def delete():
             )
         )
 
-        return jsonify({
+        return JSONResponse(content={
             "message": f"Document and chunks deleted successfully for filename: {filename}",
             "deleted_chunks": len(vector_ids_to_delete)
         })
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-def start():
-    app.run(host="127.0.0.1", port=11436, debug=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
-    start()
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=11436)
