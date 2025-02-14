@@ -17,6 +17,7 @@ from langchain_openai import ChatOpenAI
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Distance, VectorParams, Filter, FieldCondition, MatchValue, PointIdsList
+from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 
@@ -30,6 +31,15 @@ QDRANT_ENDPOINT = os.getenv("QDRANT_ENDPOINT")
 
 app = FastAPI()
 folder_path = "db"
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],  
+    allow_headers=["*"],
+)
+
 
 cross_encoder = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-12-v2")
 # llm = OllamaLLM(model="llama3")
@@ -59,10 +69,10 @@ raw_prompt = ChatPromptTemplate.from_template("""
 
 client = QdrantClient(QDRANT_ENDPOINT, api_key=QDRANT_API_KEY)
 
-# client.create_collection(
-#     collection_name="demo_collection",
-#     vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
-# )
+client.create_collection(
+    collection_name="demo_collection",
+    vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
+)
 
 vector_store = QdrantVectorStore(
     client=client,
