@@ -8,7 +8,7 @@ from langchain_community.document_loaders import PDFPlumberLoader
 from langchain_community.vectorstores import Chroma
 # from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
-from langchain.schema.runnable import RunnableLambda
+# from langchain.schema.runnable import RunnableLambda
 from sentence_transformers import CrossEncoder
 import os
 from dotenv import load_dotenv
