@@ -6,8 +6,9 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain_community.document_loaders import PDFPlumberLoader
 from langchain_community.vectorstores import Chroma
-from langchain.chains import LLMChain
+# from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
+from langchain.schema.runnable import RunnableLambda
 from sentence_transformers import CrossEncoder
 import os
 from dotenv import load_dotenv
@@ -56,12 +57,13 @@ summary_prompt = PromptTemplate.from_template("""
     Ringkas pertanyaan berikut:
     Pertanyaan: {query}
 """)
-summarization_chain = LLMChain(llm=llm, prompt=summary_prompt)
+summarization_chain = summary_prompt | llm
+#summarization_chain = LLMChain(llm=llm, prompt=summary_prompt)
 
 raw_prompt = ChatPromptTemplate.from_template("""
-    Anda adalah asisten AI bernama Emilia (jangan memperkenalkan diri setiap saat, hanya ketika pengguna ingin menanyakan nama Anda).
-    Jawab berdasarkan dokumen yang diambil dan gunakan bahasa Indonesia
-    Jika konteks tidak mencukupi, Anda dapat menjawab sesuai pengetahuan Anda
+    Anda adalah asisten AI bernama Emilia, seorang ahli dalam mata kuliah Struktur Data (jangan memperkenalkan diri setiap saat, hanya ketika pengguna ingin menanyakan nama Anda).
+    Jawab berdasarkan dokumen yang diambil dan gunakan bahasa Indonesia.
+    Jika konteks tidak mencukupi, gunakan pengetahuan Anda tentang Struktur Data untuk memberikan jawaban yang jelas dan akurat.    
     Pertanyaan: {input}
     Konteks: {context}
     Jawaban:
@@ -69,19 +71,19 @@ raw_prompt = ChatPromptTemplate.from_template("""
 
 client = QdrantClient(QDRANT_ENDPOINT, api_key=QDRANT_API_KEY)
 
-client.create_collection(
-    collection_name="demi_collection",
-    vectors_config=VectorParams(size=384, distance=Distance.COSINE),
-)
+# client.create_collection(
+#     collection_name="test1_collection",
+#     vectors_config=VectorParams(size=384, distance=Distance.COSINE),
+# )
 
 # client.create_collection(
-#     collection_name="demi_collection",
+#     collection_name="test1_collection",
 #     vectors_config=VectorParams(size=3072, distance=Distance.COSINE),
 # )
 
 vector_store = QdrantVectorStore(
     client=client,
-    collection_name="demi_collection",
+    collection_name="test1_collection",
     embedding=fast_embedding,
 )
 
@@ -105,7 +107,7 @@ async def ask_pdf(query: dict):
             search_type="mmr",
             search_kwargs={"k": 20, "lambda_mult": 0.2},
         )
-        retrieved_docs = retriever.get_relevant_documents(query_text)
+        retrieved_docs = retriever.invoke(query_text)
         print(f"Retrieved {len(retrieved_docs)} documents.")
 
         query_doc_pairs = [(query_text, doc.page_content) for doc in retrieved_docs]
@@ -123,7 +125,7 @@ async def ask_pdf(query: dict):
 
         return JSONResponse(content={
             "message": "Query processed successfully",
-            "answer": result.content,
+            "answer": result,
             "context": context
         })
     except Exception as e:
@@ -158,7 +160,7 @@ async def upload(file: UploadFile = File(...)):
             url=QDRANT_ENDPOINT,
             api_key=QDRANT_API_KEY,
             prefer_grpc=True,
-            collection_name="demi_collection",
+            collection_name="test1_collection",
         )
 
         return JSONResponse(content={
@@ -191,7 +193,7 @@ async def delete(filename: dict):
         )
 
         scroll_result = client.scroll(
-            collection_name="demi_collection",
+            collection_name="test1_collection",
             scroll_filter=filter_condition,
             with_payload=True,
             with_vectors=False,
@@ -205,7 +207,7 @@ async def delete(filename: dict):
             return JSONResponse(content={'message': f"No chunks found for filename: {filename}"}, status_code=404)
 
         client.delete(
-            collection_name="demi_collection",
+            collection_name="test1_collection",
             points_selector=PointIdsList(
                 points=vector_ids_to_delete
             )
