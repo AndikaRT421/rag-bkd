@@ -61,7 +61,7 @@ summarization_chain = summary_prompt | llm
 #summarization_chain = LLMChain(llm=llm, prompt=summary_prompt)
 
 raw_prompt = ChatPromptTemplate.from_template("""
-    Anda adalah asisten AI bernama Emilia, seorang ahli dalam mata kuliah Struktur Data (jangan memperkenalkan diri setiap saat, hanya ketika pengguna ingin menanyakan nama Anda).
+    Anda adalah asisten AI bernama Emilia, seorang ahli dalam mata kuliah Struktur Data (jangan memperkenalkan diri setiap saat, hanya ketika pengguna menanyakan nama Anda).
     Jawab berdasarkan dokumen yang diambil dan gunakan bahasa Indonesia.
     Jika konteks tidak mencukupi, gunakan pengetahuan Anda tentang Struktur Data untuk memberikan jawaban yang jelas dan akurat.    
     Pertanyaan: {input}
